@@ -1,9 +1,15 @@
 mod days;
 
-use anyhow::{bail, Result};
+use std::{
+    fs::{self, read_to_string},
+    path::Path,
+};
+
+use anyhow::{bail, Context, Result};
 use chrono::{Datelike, Local};
 use clap::{Parser, Subcommand};
 use days::*;
+use reqwest::{blocking::Client, header::COOKIE};
 
 const YEAR: i32 = 2024;
 
@@ -21,7 +27,7 @@ enum Commands {
     Run {
         #[arg(
             value_parser = clap::value_parser!(u32).range(1..=25),
-            help = "The day you want to run (or today by default)")
+            help = "The day you want to run (or leave blank to run today)")
         ]
         day: Option<u32>,
     },
@@ -29,7 +35,7 @@ enum Commands {
     Fetch {
         #[arg(
             value_parser = clap::value_parser!(u32).range(1..=25),
-            help = "The the day you want to fetch the input for (or today by default)")
+            help = "The the day you want to fetch the input for (or leave blank to fetch today)")
         ]
         day: Option<u32>,
     },
@@ -54,14 +60,21 @@ fn today() -> Result<u32> {
     }
 }
 
-fn run_day(day: &Option<u32>) {
+fn run_day(day: &Option<u32>) -> Result<()> {
     let day = match day {
         Some(day) => *day,
-        None => match today() {
-            Ok(day) => day,
-            Err(e) => panic!("Couldn't run today: {}", e),
-        },
+        None => today().context(
+            "Failed to get/parse today's date, please call the program again and specify a day",
+        )?,
     };
+
+    if !Path::new(&format!("input/day{day:02}.txt")).exists() {
+        println!("No input found, attempting to fetch from AoC website.");
+        fetch_day(&Some(day))
+            .context("Failed to fetch input. Did you put your session token in a .token file?")?;
+        println!();
+    }
+
     match day {
         1 => day01::Day01::run(),
         2 => day02::Day02::run(),
@@ -88,20 +101,55 @@ fn run_day(day: &Option<u32>) {
         23 => day23::Day23::run(),
         24 => day24::Day24::run(),
         25 => day25::Day25::run(),
-        day => panic!("The Advent of Code doesn't have a day {day}"),
+        day => bail!("The Advent of Code doesn't have a day {day}"),
     }
+
+    Ok(())
 }
 
-fn fetch_day(_day: &Option<u32>) {
-    todo!("No fetching yet")
+fn fetch_day(day: &Option<u32>) -> Result<()> {
+    let day = match day {
+        Some(day) => *day,
+        None => match today() {
+            Ok(day) => day,
+            Err(e) => bail!("Can't get current day: {e}"),
+        },
+    };
+
+    let token = read_to_string(".token").context("Failed to read .token file")?;
+
+    let client = Client::new();
+    let response = client
+        .get(format!("https://adventofcode.com/{YEAR}/day/{day}/input"))
+        .header(COOKIE, format!("session={token};"))
+        .send()?
+        .error_for_status()
+        .context("Couldn't retrieve input from AoC website. Did you put your session cookie in the .session file?")?;
+
+    let input = response
+        .text()
+        .context("Failed to parse the website's response")?;
+    let path = format!("input/day{day:02}.txt");
+    fs::write(&path, input).context("Couldn't write input to file")?;
+
+    Ok(())
 }
 
 fn main() {
     let cli = Cli::parse();
 
     match &cli.command {
-        Some(Commands::Run { day }) => run_day(day),
-        Some(Commands::Fetch { day }) => fetch_day(day),
-        None => run_day(&None),
+        Some(Commands::Run { day }) => match run_day(day) {
+            Ok(()) => (),
+            Err(e) => println!("Couldn't run day: {e}"),
+        },
+        Some(Commands::Fetch { day }) => match fetch_day(day) {
+            Ok(()) => (),
+            Err(e) => println!("Couldn't fetch day: {e}"),
+        },
+        None => match run_day(&None) {
+            Ok(()) => (),
+            Err(e) => println!("Couldn't run today: {e}"),
+        },
     }
 }
