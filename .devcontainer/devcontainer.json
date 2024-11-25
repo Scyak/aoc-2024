@@ -1,0 +1,14 @@
+{
+	"name": "AoC-2024-Rust",
+	"image": "mcr.microsoft.com/devcontainers/rust:latest",
+
+	"customizations": {
+		"vscode": {
+			"settings": {},
+			"extensions": [
+                "matklad.rust-analyzer",
+                "vadimcn.vscode-lldb"
+			]
+		}
+	}
+}
