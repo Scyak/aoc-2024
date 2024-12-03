@@ -52,7 +52,7 @@ fn is_safe(report: &Vec<i32>) -> bool {
     let descending = report[1] < report[0];
 
     for window in report.windows(2) {
-        if levels_safe(window[0], window[1], descending) {
+        if !levels_safe(window[0], window[1], descending) {
             return false;
         }
     }
@@ -78,5 +78,5 @@ fn is_safe_with_dampener(report: &Vec<i32>) -> bool {
 
 fn levels_safe(previous_level: i32, current_level: i32, descending: bool) -> bool {
     let distance = (current_level - previous_level).abs();
-    (current_level < previous_level) != descending || distance > 3 || distance < 1
+    (current_level < previous_level) == descending && distance <= 3 && distance > 0
 }
